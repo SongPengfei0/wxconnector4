@@ -2,10 +2,13 @@
 
 微信 4.x 自动化主接口。Phase 0：连接/账号；Phase 1：收发/切换会话。
 """
+from __future__ import annotations
+
 import time
 import threading
 from abc import ABC
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 
 from .param import WxParam, WxResponse
 from .logger import wxlog
@@ -14,6 +17,12 @@ from .ui.chatbox import ChatBox
 from .ui.sessionbox import SessionBox
 from .utils import uiabase
 from .utils.lock import uilock
+
+if TYPE_CHECKING:
+    from .msgs.base import BaseMessage
+    from .ui.sessionbox import SessionElement
+    from .ui.component import WeChatDialog
+    from .ui.moment import MomentsWnd
 
 
 class Listener(ABC):
@@ -50,7 +59,7 @@ class Chat:
         wxlog.warning('EditFriendInfo 代码实装待真机微调（好友资料→设置备注和标签）')
         return WxResponse.failure('待真机微调')
 
-    def GetDialog(self, wait: int = 3):
+    def GetDialog(self, wait: int = 3) -> WeChatDialog:
         from .ui.component import WeChatDialog
         return WeChatDialog(getattr(self.core, 'control', None), wait=wait)
 
@@ -76,10 +85,10 @@ class Chat:
         wxlog.warning('SendAudio 暂未实现：需安装 VB-CABLE 虚拟声卡并将微信麦克风设为 CABLE Output')
         return WxResponse.failure('SendAudio 暂未实现（需 VB-CABLE 虚拟声卡）')
 
-    def GetAllMessage(self):
+    def GetAllMessage(self) -> list[BaseMessage]:
         return self.ChatBox.get_msgs() if self.ChatBox else []
 
-    def GetNewMessage(self):
+    def GetNewMessage(self) -> list[BaseMessage]:
         return self.ChatBox.get_new_msgs() if self.ChatBox else []
 
     def Close(self) -> None:
@@ -142,7 +151,7 @@ class WeChat(Chat, Listener):
         except KeyboardInterrupt:
             wxlog.info('KeepRunning 已退出')
 
-    def ShutDown(self):
+    def ShutDown(self) -> WxResponse:
         try:
             import psutil
             psutil.Process(self.core.pid).terminate()
@@ -167,7 +176,7 @@ class WeChat(Chat, Listener):
         return WxResponse.success('已切换会话', data={'who': who}) if ok \
             else WxResponse.failure(f'切换到「{who}」失败')
 
-    def GetSession(self):
+    def GetSession(self) -> list[SessionElement]:
         return self.SessionBox.get_session()
 
     def ChatInfo(self) -> dict:
@@ -272,7 +281,7 @@ class WeChat(Chat, Listener):
         time.sleep(2.0)
         return WxResponse.success('已发起群聊', data={'members': chosen})
 
-    def GetAllRecentGroups(self, speed: int = 1, interval: float = 0.1):
+    def GetAllRecentGroups(self, speed: int = 1, interval: float = 0.1) -> list[tuple[str, str]]:
         """从会话列表筛出群聊（名称含「群」标志的会话）。"""
         return [(s.name, s.content) for s in self.GetSession() if '群' in (s.name or '')]
 
@@ -466,7 +475,7 @@ class WeChat(Chat, Listener):
 
     def GetFriendDetails(self, n: int = None, timeout: int = 0xFFFFF, save_head_image: bool = False,
                          save_head_wait: int = 0, interval: int = 0, callback=None,
-                         speed: int = 3, max_repeat: int = 10):
+                         speed: int = 3, max_repeat: int = 10) -> list[dict]:
         """遍历通讯录读取好友详情（昵称/微信号/地区/个性签名/来源/备注）。只读。"""
         if uiabase.is_locked():
             return []
@@ -510,7 +519,7 @@ class WeChat(Chat, Listener):
         return WxResponse.success('已发送链接', data=results)
 
     # ---------- 朋友圈 ----------
-    def Moments(self, timeout: int = 3):
+    def Moments(self, timeout: int = 3) -> MomentsWnd | None:
         """进入朋友圈，返回 MomentsWnd。"""
         from .ui.moment import MomentsWnd
         if uiabase.is_locked():
@@ -533,13 +542,13 @@ class WeChat(Chat, Listener):
         return wnd.Publish(text=text, media_files=media_files, privacy_config=privacy_config)
 
     # ---------- 子窗口 ----------
-    def GetSubWindow(self, nickname: str):
+    def GetSubWindow(self, nickname: str) -> Chat | None:
         win = self.SessionBox._find_sub_window(nickname)
         if win is None:
             return None
         return Chat(core=WeChatSubWnd(control=win, root=self.core, nickname=nickname))
 
-    def GetAllSubWindow(self):
+    def GetAllSubWindow(self) -> list[Chat]:
         from .languages import CTRL
         out = []
         for w in uiabase.find_windows(classname=CTRL['sub_window_cls']):
@@ -657,7 +666,7 @@ class WeChat(Chat, Listener):
         return {}
 
     def GetHistoryMessage(self, n: int = None, callback=None, interval: float = 0.2,
-                          speed: int = 1, goback: bool = True):
+                          speed: int = 1, goback: bool = True) -> list[BaseMessage]:
         """向上滚动加载并收集历史消息（按 id 去重）。
 
         Args:

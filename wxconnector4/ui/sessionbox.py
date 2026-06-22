@@ -1,4 +1,6 @@
 """会话列表组件：列举会话、搜索、切换会话。"""
+from __future__ import annotations
+
 import time
 
 from ..param import WxParam, WxResponse
@@ -52,7 +54,7 @@ class SessionBox:
         # 搜索框：XSearchField 内的 XValidatorTextEdit(Name=搜索)
         return uiabase.find(self.root_control, classname=CTRL['search_edit_cls'], maxdepth=20)
 
-    def get_session(self):
+    def get_session(self) -> list[SessionElement]:
         lst = self._list()
         if lst is None:
             return []

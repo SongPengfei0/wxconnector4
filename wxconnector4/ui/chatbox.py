@@ -2,15 +2,21 @@
 
 操作对象是一个窗口控件（主窗口或独立子窗口）的聊天区。
 """
+from __future__ import annotations
+
 import os
 import time
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
 
 from ..param import WxParam, WxResponse
 from ..languages import CTRL
 from ..utils import uiabase
 from ..logger import wxlog
 from ..msgs.parse import parse_message
+
+if TYPE_CHECKING:
+    from ..msgs.base import BaseMessage
 
 
 class ChatBox:
@@ -153,7 +159,7 @@ class ChatBox:
         return WxResponse.success('已 @所有人 并发送', data={'msg': msg})
 
     # ---------- 读取消息 ----------
-    def get_msgs(self, detect_direction: bool = True):
+    def get_msgs(self, detect_direction: bool = True) -> list[BaseMessage]:
         mlist = self._msg_list()
         if mlist is None:
             return []
@@ -187,7 +193,7 @@ class ChatBox:
                 except Exception:
                     break
 
-    def get_new_msgs(self, detect_direction: bool = True):
+    def get_new_msgs(self, detect_direction: bool = True) -> list[BaseMessage]:
         """返回自上次调用以来的新消息（按 id 去重）。"""
         if not hasattr(self, '_seen_ids'):
             self._seen_ids = set()
