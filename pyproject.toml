@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wxconnector4"
+version = "0.1.0"
+description = "免授权、开源的微信 4.x（Windows 桌面版）自动化库，基于公开的 Windows UI Automation。"
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "uiautomation",
+    "comtypes",
+    "pywin32",
+    "pillow",
+    "psutil",
+    "pyperclip",
+    "colorama",
+]
+
+[tool.setuptools]
+packages = [
+    "wxconnector4",
+    "wxconnector4.utils",
+    "wxconnector4.ui",
+    "wxconnector4.msgs",
+]

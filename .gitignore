@@ -1,0 +1,36 @@
+# ---- 虚拟环境（含已安装的第三方库，切勿提交！）----
+.venv/
+venv/
+env/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.egg
+
+# ---- IDE / 工具 ----
+.idea/
+.vscode/
+.claude/
+
+# ---- 开发资产（控件树参考、分析报告、dump 工具，不发布）----
+dev/
+
+# ---- 临时侦察 / 调试脚本 ----
+debug_*.py
+probe_*.py
+inspect_*.py
+
+# ---- 运行产物 ----
+wxconnector文件下载/
+_dl_test/
+downloads/
+*.log
+*.png
+
+# ---- 系统 ----
+Thumbs.db
+.DS_Store
