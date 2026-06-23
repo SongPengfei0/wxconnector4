@@ -165,6 +165,29 @@ def click_at(x, y):
     auto.Click(x, y)
 
 
+def double_click_at(x, y):
+    import uiautomation as auto
+    auto.Click(x, y)
+    time.sleep(0.06)
+    auto.Click(x, y)
+
+
+def mouse_down(x, y):
+    """在 (x,y) 按下鼠标左键且不抬起（用于「按住说话」类长按场景）。"""
+    import win32api
+    win32api.SetCursorPos((int(x), int(y)))
+    time.sleep(0.02)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+
+
+def mouse_up(x, y):
+    """抬起鼠标左键。"""
+    import win32api
+    win32api.SetCursorPos((int(x), int(y)))
+    time.sleep(0.02)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+
 def get_value(ctrl: Control) -> str:
     """读取控件文本：优先 ValuePattern，否则回退 Name。"""
     try:
