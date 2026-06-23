@@ -105,7 +105,8 @@ WxParam.OCR_BACKEND = lambda image_path: my_ocr_engine(image_path)
 - `SendMsg(msg, who)` 发送文本（粘贴 + 相似度校验）
 - `SendFiles(filepath, who)` 发送文件 / 图片
 - `AtAll(msg, who)` 群内 @所有人 并发送（需群主 / 管理员权限）
-- `SendUrlCard(url, friends)` 发送链接
+- `SendUrlCard(url, friends)` 发送链接卡片（粘贴 URL 等微信渲染卡片后发送）
+- `SendAudio(filepath, who)` 发送语音条（需 VB-CABLE 虚拟声卡，见下）
 
 **读取**
 - `GetAllMessage()` / `GetNewMessage()` 当前会话消息
@@ -115,12 +116,15 @@ WxParam.OCR_BACKEND = lambda image_path: my_ocr_engine(image_path)
 **消息动作**（消息对象方法）
 - `select_option(option)` 右键菜单操作（复制 / 收藏 / 提醒 …）
 - `quote(text)` 引用回复、`forward(targets)` 转发、`delete()` 删除
+- `click_head(right=False)` 点击头像打开发送者资料、`tickle()` 拍一拍（双击头像）
+- `sender_info()` 读取发送人信息（群里识别"谁发的"，点头像取资料卡）
 
 **媒体**（按消息类型）
 - 图片 `image`：`download()` 保存、`ocr()` 提取文字
 - 语音 `voice`：`to_text()` 语音转文字
 - 文件 `file` / 视频 `video`：`download(dir_path)` 另存为
 - 合并转发 `merge`：`get_messages()` / `get_content()` 读取聊天记录
+- 笔记 `note`：`get_content()` 读正文、`save_files()` 存附件、`to_markdown()` 导出
 
 **监听**
 - `AddListenChat(nickname, callback)` / `RemoveListenChat()`
@@ -130,7 +134,10 @@ WxParam.OCR_BACKEND = lambda image_path: my_ocr_engine(image_path)
 **好友**
 - `AddNewFriend(keywords, addmsg, remark)` 搜索并添加好友
 - `GetFriendDetails()` 读取好友资料
-- `EditFriendInfo(remark=...)` 修改好友备注
+- `EditFriendInfo(remark=..., add_tags=..., remove_tags=...)` 修改好友备注与标签
+
+**登录**
+- `LoginWnd.open() / login() / reopen()` 启动微信并处理（扫码 / 已记住账号快捷）登录
 
 **群**
 - `CreateGroup(contacts)` 发起群聊
@@ -138,22 +145,41 @@ WxParam.OCR_BACKEND = lambda image_path: my_ocr_engine(image_path)
 **朋友圈**
 - `Moments()` 获取朋友圈、`PublishMoment(text, media_files, privacy_config)` 发表
 
-### ⏳ 待实现 / 占位（stub）
+### 🧪 已实现但需真机校验
 
-以下接口已保留方法签名，但尚未实现（调用返回失败并告警），欢迎贡献：
+下列原「待实现」清单中的接口现已按本库既有的控件定位约定实现，但**作者无真机环境逐一验证**，
+其依赖的界面控件名/位置在微信 4.x 中可能随版本变化。建议首次使用在自有账号上验证，必要时按下表微调：
+
+| 接口 | 实现路线 | 真机校验点 |
+|---|---|---|
+| `<msg>.click_head()` / `tickle()` | 按消息方向算头像坐标，单击开资料卡 / 双击触发拍一拍 | `WxParam.HEAD_INSET_X/Y` 头像内缩偏移 |
+| `<msg>.sender_info()` | 点头像 → 读 `mmui::ContactProfileView` 资料卡 | 资料卡浮层 ClassName |
+| `Note` 笔记 `get_content`/`save_files`/`to_markdown` | 点气泡开笔记详情窗 → 读文本/存图 → 导出 md | `NoteMessage.WND_CLS_CANDIDATES` 笔记窗类名 |
+| `SendAudio(filepath)` | 音频灌入虚拟声卡 + 「按住说话」录制发送 | 见下方「发送语音条」前置条件 |
+| `LoginWnd.open/login/reopen` | 注册表定位 Weixin.exe 启动 → 点「进入微信」或等扫码 | 登录按钮文案、安装路径 |
+| `EditFriendInfo` 标签 `add_tags`/`remove_tags` | 设置备注和标签面板 → 点「标签」行 → 增删 | 标签编辑器控件（4.x 定位不稳定） |
+| `SendUrlCard` 链接卡片 | 粘贴 URL，等微信抓取渲染卡片后发送 | 卡片渲染等待 `wait_render` |
+
+> 标签编辑、笔记窗等控件在 4.x 中定位较不稳定；如失效，优先检查并更新对应 ClassName / 文案。
+
+### ⏳ 仍未实现
 
 | 接口 | 说明 |
 |---|---|
-| `<msg>.sender_info` | 群消息的发送人信息（识别"谁发的"） |
-| `Note` 笔记消息 `get_content` / `save_files` / `to_markdown` | 读取微信笔记内容 |
-| `<msg>.click_head()` | 点击消息头像、打开发送者资料 |
-| `<msg>.tickle()` | 拍一拍 |
-| `SendAudio(filepath)` | 发送语音（需 VB-CABLE 虚拟声卡） |
-| `LoginWnd`（扫码登录流程） | 自动化扫码登录 |
-| `EditFriendInfo` 的标签 `add_tags` / `remove_tags` | 好友标签增删（界面定位不稳定，暂不实现） |
-| `SendUrlCard` 完整卡片分享 | 当前为「直接发送 URL」最简实现 |
+| 群资料修改 `SetGroupName` / `SetGroupAnnouncement` 等 | 群管理写操作（控件定位不稳定） |
+| `GetNewFriends` / 通过好友申请 | 好友申请列表读取与同意 |
+| 朋友圈点赞 / 评论 `Like` / `Comment` | 仅实现了发布与读取 |
 
-> 说明：部分功能（如好友标签、群资料修改）所依赖的界面元素在微信 4.x 中定位不稳定、易随版本变化，出于稳定性考虑暂未纳入。
+### 发送语音条（`SendAudio`）前置条件
+
+`SendAudio` 本质是把音频「播放给微信听」，故需：
+
+1. 安装 [VB-CABLE](https://vb-audio.com/Cable/) 虚拟声卡；
+2. 微信「设置 → 音视频 → 麦克风」选 **CABLE Output**；
+3. 安装可选依赖：`pip install sounddevice soundfile numpy`；
+4. 非 wav 音频（mp3/m4a 等）需 `ffmpeg`（在 PATH 或设 `WxParam.AUDIO_PARAM['ffmpeg_path']`）。
+
+缺少任一前置条件时 `SendAudio` 会返回明确的失败原因，不影响其它功能。
 
 ---
 

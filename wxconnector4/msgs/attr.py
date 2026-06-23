@@ -1,8 +1,10 @@
-"""按归属划分的消息类：系统 / 好友 / 自己。"""
+"""按归属划分的消息类：系统 / 好友 / 自己。
+
+注意：parse_message 实际返回的是按内容分型的类（TextMessage/ImageMessage…），
+仅把 attr 设为字符串 'friend'/'self'；下面的 FriendMessage/SelfMessage 不会被
+直接实例化，发送人识别等能力统一放在 HumanMessage 上（见 base.py.sender_info）。
+"""
 from .base import BaseMessage, HumanMessage
-from ..param import WxResponse
-from ..utils.lock import uilock
-from ..logger import wxlog
 
 
 class SystemMessage(BaseMessage):
@@ -16,13 +18,10 @@ class SystemMessage(BaseMessage):
 
 
 class FriendMessage(HumanMessage):
+    """好友发出的消息。sender_info 等能力继承自 HumanMessage。"""
     attr = 'friend'
-
-    @uilock
-    def sender_info(self) -> dict:
-        wxlog.warning('FriendMessage.sender_info 尚未实现（Phase 3）')
-        return {}
 
 
 class SelfMessage(HumanMessage):
+    """自己发出的消息。"""
     attr = 'self'

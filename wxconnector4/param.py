@@ -41,6 +41,12 @@ class WxParam:
     # 是否每次启动强制重新自动获取 X 偏移量
     FORCE_MESSAGE_XBIAS: bool = False
 
+    # 消息行内头像点击点（相对消息行边缘的内缩像素）：
+    #   好友消息头像靠左边缘、自己消息头像靠右边缘，y 从行顶部下移。
+    #   4.x 头像约 40px、外边距约 8px，故中心内缩约 28px；可按真机微调。
+    HEAD_INSET_X: int = 28
+    HEAD_INSET_Y: int = 28
+
     # 监听消息时间间隔，单位秒
     LISTEN_INTERVAL: int = 1
 

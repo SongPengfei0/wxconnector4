@@ -82,8 +82,8 @@ class Chat:
     @uilock
     def SendAudio(self, filepath: str, duration: int = None, start: int = 0,
                   who: str = None, exact: bool = False) -> WxResponse:
-        wxlog.warning('SendAudio 暂未实现：需安装 VB-CABLE 虚拟声卡并将微信麦克风设为 CABLE Output')
-        return WxResponse.failure('SendAudio 暂未实现（需 VB-CABLE 虚拟声卡）')
+        """发送语音条（独立窗口场景，不切换会话）。需 VB-CABLE 虚拟声卡。"""
+        return self.ChatBox.send_audio(filepath, duration=duration, start=start)
 
     def GetAllMessage(self) -> list[BaseMessage]:
         return self.ChatBox.get_msgs() if self.ChatBox else []
@@ -206,6 +206,14 @@ class WeChat(Chat, Listener):
         if who and not self._ensure_chat(who, exact, max_retries):
             return WxResponse.failure(f'切换到「{who}」失败，未发送')
         return self.ChatBox.at_all(msg)
+
+    @uilock
+    def SendAudio(self, filepath: str, duration: int = None, start: int = 0,
+                  who: str = None, exact: bool = False, max_retries: int = 3) -> WxResponse:
+        """发送语音条。who 指定则先切到该会话。需 VB-CABLE 虚拟声卡，详见 audio.py。"""
+        if who and not self._ensure_chat(who, exact, max_retries):
+            return WxResponse.failure(f'切换到「{who}」失败，未发送')
+        return self.ChatBox.send_audio(filepath, duration=duration, start=start)
 
     def _ensure_chat(self, who: str, exact: bool, max_retries: int) -> bool:
         """切换到目标会话并校验当前会话名，避免发错对象。"""
@@ -393,23 +401,109 @@ class WeChat(Chat, Listener):
                 return True
         return False
 
+    def _edit_tags(self, panel, add_tags=None, remove_tags=None, tag_wait: float = 0.2) -> dict:
+        """在「设置备注和标签」面板内增删标签（best-effort）。
+
+        4.x 标签编辑入口定位不稳定，此实现按常见结构尝试，需真机微调：
+        点面板内「标签」行 → 弹标签编辑器（搜索框 + 标签单元）→ 逐个输入并选中
+        匹配单元（无匹配则回车新建）；移除则点已选中同名单元取消 → 确定收起。
+        返回 {'added':[...], 'removed':[...]}。
+        """
+        root = self.core.control
+        result = {'added': [], 'removed': []}
+        add_tags = list(add_tags or [])
+        remove_tags = list(remove_tags or [])
+        if not add_tags and not remove_tags:
+            return result
+        # 打开标签编辑器：点面板里「标签」行
+        tag_row = (uiabase.find(panel, name='标签', maxdepth=16)
+                   or uiabase.find(panel, name_contains='标签', maxdepth=16))
+        if tag_row is None:
+            wxlog.warning('未找到「标签」行，跳过标签编辑')
+            return result
+        try:
+            tag_row.Click(simulateMove=False)
+        except Exception:
+            pass
+        time.sleep(0.6)
+        # 标签编辑器：优先在整窗找搜索框（编辑器可能是浮层）
+        def _tag_input():
+            return (uiabase.find(uiabase.get_root(), classname='mmui::XValidatorTextEdit',
+                                 name='搜索', maxdepth=28)
+                    or uiabase.find(uiabase.get_root(), classname='mmui::XValidatorTextEdit', maxdepth=28))
+
+        for t in add_tags:
+            inp = _tag_input()
+            if inp is not None:
+                uiabase.set_focus(inp)
+                uiabase.clear_edit(inp)
+                uiabase.set_clipboard_text(t)
+                time.sleep(0.1)
+                inp.SendKeys('{Ctrl}v')
+                time.sleep(max(0.3, tag_wait))
+            # 选中匹配的标签单元；无则回车新建
+            cell = None
+            for c in uiabase.find_all(uiabase.get_root(), classname='mmui::XTableCell', maxdepth=30):
+                if (c.Name or '').strip() == t:
+                    cell = c
+                    break
+            try:
+                if cell is not None:
+                    cell.Click(simulateMove=False)
+                elif inp is not None:
+                    inp.SendKeys('{Enter}')  # 新建标签
+                result['added'].append(t)
+                time.sleep(tag_wait)
+            except Exception:
+                pass
+
+        for t in remove_tags:
+            inp = _tag_input()
+            if inp is not None:
+                uiabase.set_focus(inp)
+                uiabase.clear_edit(inp)
+                uiabase.set_clipboard_text(t)
+                time.sleep(0.1)
+                inp.SendKeys('{Ctrl}v')
+                time.sleep(max(0.3, tag_wait))
+            cell = None
+            for c in uiabase.find_all(uiabase.get_root(), classname='mmui::XTableCell', maxdepth=30):
+                if (c.Name or '').strip() == t:
+                    cell = c
+                    break
+            try:
+                if cell is not None:
+                    cell.Click(simulateMove=False)  # 再次点击取消选中
+                    result['removed'].append(t)
+                time.sleep(tag_wait)
+            except Exception:
+                pass
+        # 确定收起标签编辑器
+        ok = (uiabase.find(uiabase.get_root(), name='完成', control_type='ButtonControl', maxdepth=30)
+              or uiabase.find(uiabase.get_root(), name='确定', control_type='ButtonControl', maxdepth=30))
+        if ok is not None:
+            try:
+                ok.Click(simulateMove=False)
+                time.sleep(0.5)
+            except Exception:
+                pass
+        return result
+
     @uilock
     def EditFriendInfo(self, add_tags=None, remove_tags=None, remark: str = None,
                        tag_wait: float = 0.2) -> WxResponse:
-        """修改好友备注（作用于当前会话好友 self.who）。
+        """修改好友备注与标签（作用于当前会话好友 self.who）。
 
         路径：通讯录搜索定位好友 → 资料区「更多」→「设置备注和标签」→
-        ProfileFormEditorView 备注框 → 完成。
+        ProfileFormEditorView 备注框/标签行 → 完成。
 
-        add_tags/remove_tags 参数保留以兼容接口，但**不实现**——4.x 资料
-        面板的标签编辑入口定位极不稳定（同群属性方法），传入会被忽略并告警。
+        - remark: 备注（None 表示不改备注）
+        - add_tags / remove_tags: 标签增删（list[str]）。4.x 标签编辑入口定位不
+          稳定，采用 best-effort，建议真机校验。
+        至少需提供 remark / add_tags / remove_tags 其一。
         """
-        if remark is None:
-            if add_tags or remove_tags:
-                return WxResponse.failure('标签编辑在微信4.x 不稳定，wxconnector4 不支持；本方法仅改 remark')
-            return WxResponse.failure('remark 不能为 None')
-        if add_tags or remove_tags:
-            wxlog.warning('add_tags/remove_tags 在微信4.x 资料面板定位不稳定，已忽略；仅处理 remark')
+        if remark is None and not add_tags and not remove_tags:
+            return WxResponse.failure('需指定 remark 或 add_tags/remove_tags 其一')
         if uiabase.is_locked():
             return WxResponse.error('已锁屏')
         friend = self.who or (self.ChatBox.who if self.ChatBox else None)
@@ -432,15 +526,19 @@ class WeChat(Chat, Listener):
         panel = uiabase.find(root, classname='mmui::ProfileFormEditorView', maxdepth=24)
         if panel is None:
             return WxResponse.failure('未弹出设置备注和标签面板')
-        rm = uiabase.find(panel, classname='mmui::XLineEdit', maxdepth=14)
-        if rm is not None:
-            uiabase.set_focus(rm)
-            rm.SendKeys('{Ctrl}a{Delete}')
-            if remark:
-                uiabase.set_clipboard_text(remark)
-                time.sleep(0.1)
-                rm.SendKeys('{Ctrl}v')
-            time.sleep(0.2)
+        if remark is not None:
+            rm = uiabase.find(panel, classname='mmui::XLineEdit', maxdepth=14)
+            if rm is not None:
+                uiabase.set_focus(rm)
+                rm.SendKeys('{Ctrl}a{Delete}')
+                if remark:
+                    uiabase.set_clipboard_text(remark)
+                    time.sleep(0.1)
+                    rm.SendKeys('{Ctrl}v')
+                time.sleep(0.2)
+        tag_result = {'added': [], 'removed': []}
+        if add_tags or remove_tags:
+            tag_result = self._edit_tags(panel, add_tags, remove_tags, tag_wait)
         # 完成（按钮在面板外层，扩大到整窗搜索 XOutlineButton）
         done = (uiabase.find(panel, name='完成', control_type='ButtonControl', maxdepth=16)
                 or uiabase.find(root, name='完成', control_type='ButtonControl', maxdepth=30))
@@ -448,7 +546,10 @@ class WeChat(Chat, Listener):
             return WxResponse.failure('未找到「完成」按钮')
         done.Click(simulateMove=False)
         time.sleep(0.8)
-        return WxResponse.success('已修改好友备注', data={'friend': friend, 'remark': remark})
+        return WxResponse.success('已修改好友资料', data={
+            'friend': friend, 'remark': remark,
+            'added_tags': tag_result['added'], 'removed_tags': tag_result['removed'],
+        })
 
     def _read_contact_profile(self) -> dict:
         """读取当前联系人资料区（通讯录点开后右侧 ContactProfileView）。"""
@@ -508,15 +609,31 @@ class WeChat(Chat, Listener):
                 wxlog.debug(f'读取好友 {c.Name} 详情失败: {e}')
         return results
 
-    def SendUrlCard(self, url: str, friends, message: str = None, timeout: int = 10) -> WxResponse:
-        """发送链接。最简实现：直接发 URL（微信会自动渲染为链接）；卡片分享流程待真机微调。"""
+    @uilock
+    def SendUrlCard(self, url: str, friends, message: str = None, timeout: int = 10,
+                    exact: bool = False, wait_render: float = 2.0) -> WxResponse:
+        """发送链接卡片给一个或多个好友。
+
+        逐个切到目标会话后，把 URL 粘进输入框、等待微信抓取渲染成链接卡片再发送
+        （见 ChatBox.send_url_card）。message 非空时先单独发一条文本附言。
+        返回 data 为 {好友: 状态} 映射。
+        """
+        if uiabase.is_locked():
+            return WxResponse.error('已锁屏')
         if isinstance(friends, str):
             friends = [friends]
         results = {}
         for f in friends:
-            r = self.SendMsg(url if not message else f'{message}\n{url}', who=f)
+            if not self._ensure_chat(f, exact, max_retries=3):
+                results[f] = '切换失败'
+                continue
+            if message:
+                self.ChatBox.send_text(message)
+                time.sleep(0.3)
+            r = self.ChatBox.send_url_card(url, wait_render=wait_render)
             results[f] = r['status']
-        return WxResponse.success('已发送链接', data=results)
+        ok = any(v == '成功' for v in results.values())
+        return (WxResponse.success if ok else WxResponse.failure)('链接发送完成', data=results)
 
     # ---------- 朋友圈 ----------
     def Moments(self, timeout: int = 3) -> MomentsWnd | None:
